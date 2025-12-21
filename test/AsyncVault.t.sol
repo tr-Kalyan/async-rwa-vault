@@ -61,8 +61,9 @@ contract AsyncVaultTest is Test {
         (address usdcAddress,) = helperConfig.activeNetworkConfig();
         usdc = IERC20(usdcAddress);
 
-        if (block.chainid == 31337) { // local anvil
-            // Mock has mint function
+        if (block.chainid == 31337) {
+            // local anvil
+        // Mock has mint function
             MockUSDC mock = MockUSDC(usdcAddress);
             mock.mint(alice, 10000 * 1e6);
             mock.mint(bob, 10000 * 1e6);
@@ -90,7 +91,7 @@ contract AsyncVaultTest is Test {
         emit RedemptionRequested(1, alice, alice, shares, expectedAssets, block.timestamp + DELAY);
 
         vm.prank(alice);
-        uint256 requestId = vault.requestRedeem(shares, alice, alice,expectedAssets);
+        uint256 requestId = vault.requestRedeem(shares, alice, alice, expectedAssets);
 
         // CHECKS
         assertEq(requestId, 1);
@@ -135,7 +136,7 @@ contract AsyncVaultTest is Test {
 
         // Alice requests exit
         vm.startPrank(alice);
-        vault.requestRedeem(aliceShares, alice, alice,expectedAssets);
+        vault.requestRedeem(aliceShares, alice, alice, expectedAssets);
         vm.stopPrank();
 
         uint256 priceAfter = vault.convertToAssets(1 ether);
@@ -149,7 +150,7 @@ contract AsyncVaultTest is Test {
     function test_DepositYieldIncreasesSharePrice() public {
         // Alice deposits
         vm.startPrank(alice);
-        usdc.approve(address(vault),1000 *1e6);
+        usdc.approve(address(vault), 1000 * 1e6);
         uint256 aliceShares = vault.deposit(1000 * 1e6, alice);
         vm.stopPrank();
 
@@ -228,7 +229,7 @@ contract AsyncVaultTest is Test {
 
     function test_RevertIf_ZeroShares() public {
         vm.expectRevert("Zero shares");
-        vault.requestRedeem(0, alice, alice,100);
+        vault.requestRedeem(0, alice, alice, 100);
     }
 
     function test_RevertIf_InsufficientAllowance() public {
@@ -241,7 +242,7 @@ contract AsyncVaultTest is Test {
         // Eve tries to redeem Alice's shares without allowance
         vm.expectRevert(); // OZ: "ERC20: insufficient allowance"
         vm.startPrank(eve);
-        vault.requestRedeem(aliceShares, alice, alice,aliceShares);
+        vault.requestRedeem(aliceShares, alice, alice, aliceShares);
         vm.stopPrank();
     }
 
@@ -252,7 +253,7 @@ contract AsyncVaultTest is Test {
         vault.deposit(1000 * 1e6, alice);
         uint256 shares = vault.balanceOf(alice);
         uint256 expectedAssets = vault.convertToAssets(shares);
-        uint256 requestId = vault.requestRedeem(shares, alice, alice,expectedAssets);
+        uint256 requestId = vault.requestRedeem(shares, alice, alice, expectedAssets);
         vm.stopPrank();
 
         vm.warp(block.timestamp + DELAY + 1);
@@ -271,7 +272,7 @@ contract AsyncVaultTest is Test {
         vm.startPrank(alice);
         usdc.approve(address(vault), 100 * 1e6);
         vault.deposit(100 * 1e6, alice);
-        
+
         // 2. Alice expects 1:1 (100 USDC), but sets minAssets to 101 USDC
         // This simulates a scenario where she thought price was 1.01
         uint256 shares = vault.balanceOf(alice);
@@ -296,7 +297,7 @@ contract AsyncVaultTest is Test {
         vm.stopPrank();
 
         // Capture her locked amount
-        (uint256 lockedAssets, ) = vault.pendingRedeemRequest(requestId);
+        (uint256 lockedAssets,) = vault.pendingRedeemRequest(requestId);
         assertEq(lockedAssets, 1000 * 1e6); // snapshotted at request time
 
         // During delay, admin deposits 50 USDC yield

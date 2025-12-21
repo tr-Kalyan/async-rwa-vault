@@ -54,7 +54,9 @@ contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
 
     event YieldDistributed(uint256 amount, uint256 newSharePrice);
 
-    event RedemptionCancelled(uint256 indexed requestId, address indexed owner, uint256 assetsReturned, uint256 sharesMinted);
+    event RedemptionCancelled(
+        uint256 indexed requestId, address indexed owner, uint256 assetsReturned, uint256 sharesMinted
+    );
 
     /* ================ CONSTRUCTOR ================ */
     constructor(IERC20 asset_, string memory name_, string memory symbol_)
@@ -102,7 +104,10 @@ contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
         emit YieldDistributed(amount, convertToAssets(1e18));
     }
 
-    function requestRedeem(uint256 shares, address receiver, address owner,uint256 minAssets) external returns (uint256 requestId) {
+    function requestRedeem(uint256 shares, address receiver, address owner, uint256 minAssets)
+        external
+        returns (uint256 requestId)
+    {
         require(shares > 0, "Zero shares");
         require(receiver != address(0), "Zero receiver");
         require(owner != address(0), "Zero owner");
@@ -125,7 +130,6 @@ contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
         if (expectedAssets < minAssets) {
             revert("Slippage: Return too low");
         }
-
 
         // Burn shares immediately
         // This is critical: reduces totalSupply -> new depositors see correct price
@@ -171,7 +175,6 @@ contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
         emit RedemptionClaimed(requestId, receiver, assetsToSend);
     }
 
-
     function cancelRedeem(uint256 requestId) external nonReentrant {
         RedemptionRequest storage request = pendingRedemptions[requestId];
 
@@ -194,7 +197,6 @@ contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
         _mint(msg.sender, sharesToMint);
 
         emit RedemptionCancelled(requestId, msg.sender, assetsToFree, sharesToMint);
-
     }
 
     /* ================ View Functions ================ */
