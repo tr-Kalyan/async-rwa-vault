@@ -29,11 +29,7 @@ contract AsyncVaultTest is Test {
         uint256 claimableAt
     );
 
-    event RedemptionClaimed(
-        uint256 indexed requestId,
-        address indexed receiver,
-        uint256 assets
-    );
+    event RedemptionClaimed(uint256 indexed requestId, address indexed receiver, uint256 assets);
 
     // function setUp() public {
     //     // Deploy mock USDC
@@ -45,7 +41,7 @@ contract AsyncVaultTest is Test {
     //         "Async RWA USDC Vault",
     //         "arUSDC"
     //     );
-        
+
     //     // Mint initial USDC to users
     //     usdc.mint(alice, INITIAL_SUPPLY);
     //     usdc.mint(bob, INITIAL_SUPPLY);
@@ -62,17 +58,18 @@ contract AsyncVaultTest is Test {
         (vault, helperConfig) = deployer.run();
 
         // Now extract the correct USDC from config
-        (address usdcAddress, ) = helperConfig.activeNetworkConfig();
+        (address usdcAddress,) = helperConfig.activeNetworkConfig();
         usdc = IERC20(usdcAddress);
 
         // In local: mock was minted in HelperConfig broadcast
         // In fork: real USDC → need to fund users
-        if (block.chainid != 31337) {  // not anvil
+        if (block.chainid != 31337) {
+            // not anvil
             // Fund via deal on fork
             deal(address(usdc), alice, 10000 * 1e6);
             deal(address(usdc), bob, 10000 * 1e6);
         }
-        // On local anvil: mock already minted during HelperConfig broadcast? Wait — no.
+        
 
         // Better: Always fund after deploy
         // Local: mock has mint()
@@ -96,21 +93,21 @@ contract AsyncVaultTest is Test {
         emit RedemptionRequested(1, alice, alice, shares, expectedAssets, block.timestamp + DELAY);
 
         vm.prank(alice);
-        uint256 requestId = vault.requestRedeem(shares, alice, alice);
+        uint256 requestId = vault.requestRedeem(shares, alice, alice,expectedAssets);
 
         // CHECKS
         assertEq(requestId, 1);
-        assertEq(vault.totalSupply(), 0); 
-        
+        assertEq(vault.totalSupply(), 0);
+
         // totalAssets() should be 0 because we subtracted pending assets!
-        assertEq(vault.totalAssets(), 0); 
-        
+        assertEq(vault.totalAssets(), 0);
+
         // Helper check
         assertEq(vault.totalPendingAssets(), expectedAssets);
 
         // Warp and Claim
         vm.warp(block.timestamp + DELAY + 1);
-        
+
         vm.expectEmit(true, true, false, true);
         emit RedemptionClaimed(requestId, alice, expectedAssets);
 
@@ -137,10 +134,11 @@ contract AsyncVaultTest is Test {
 
         uint256 aliceShares = vault.balanceOf(alice);
         uint256 priceBefore = vault.convertToAssets(1 ether);
+        uint256 expectedAssets = vault.convertToAssets(aliceShares);
 
         // Alice requests exit
         vm.startPrank(alice);
-        vault.requestRedeem(aliceShares, alice, alice);
+        vault.requestRedeem(aliceShares, alice, alice,expectedAssets);
         vm.stopPrank();
 
         uint256 priceAfter = vault.convertToAssets(1 ether);
@@ -148,14 +146,92 @@ contract AsyncVaultTest is Test {
         // PRICE CHECK
         // With the fix, Assets = 500, Shares = 500. Price = 1.0.
         // Without the fix, Assets = 1500, Shares = 500. Price = 3.0.
-        assertEq(priceBefore, priceAfter, "Price spiked! Accounting error."); 
+        assertEq(priceBefore, priceAfter, "Price spiked! Accounting error.");
+    }
+
+    function test_DepositYieldIncreasesSharePrice() public {
+        // Alice deposits
+        vm.startPrank(alice);
+        usdc.approve(address(vault),1000 *1e6);
+        uint256 aliceShares = vault.deposit(1000 * 1e6, alice);
+        vm.stopPrank();
+
+        uint256 aliceValueBefore = vault.convertToAssets(aliceShares);
+        assertEq(aliceValueBefore, 1000 * 1e6);
+
+        // Mint tokens to Admin
+        address admin = vault.owner();
+        deal(address(usdc), admin, 50 * 1e6);
+
+        // Admin deposits yield
+        vm.startPrank(admin);
+        usdc.approve(address(vault), 50 * 1e6);
+        vault.depositYield(50 * 1e6);
+        vm.stopPrank();
+
+        // Assets = 1000 (Alice) + 50 (Yield) = 1050 USDC
+        // Shares = 1000 (Alice)
+        // Price = 1050 / 1000 = 1.05 USDC per Share
+        uint256 aliceValueAfter = vault.convertToAssets(aliceShares);
+        uint256 expected = 1050 * 1e6;
+        assertApproxEqAbs(aliceValueAfter, expected, 1, "Dust from rounding");
+
+        assertEq(vault.totalSupply(), aliceShares);
+        assertEq(vault.totalAssets(), 1050 * 1e6); // no new shares
+    }
+
+    function test_CancelRedeem_ProtectsYieldForOthers() public {
+        // Alice deposits
+        vm.startPrank(alice);
+        usdc.approve(address(vault), 1000 * 1e6);
+        vault.deposit(1000 * 1e6, alice);
+        vm.stopPrank();
+
+        // Bob deposits
+        vm.startPrank(bob);
+        usdc.approve(address(vault), 1000 * 1e6);
+        vault.deposit(1000 * 1e6, bob);
+        vm.stopPrank();
+
+        // Alice requests exit
+        vm.startPrank(alice);
+        uint256 aliceShares = vault.balanceOf(alice);
+        uint256 reqId = vault.requestRedeem(aliceShares, alice, alice, 0); // 0 minAssets for now
+        vm.stopPrank();
+
+        // Admin distributes Yield (e.g., 100 USDC)
+        address admin = vault.owner();
+        deal(address(usdc), admin, 100 * 1e6);
+
+        vm.startPrank(admin);
+        usdc.approve(address(vault), 100 * 1e6);
+        vault.depositYield(100 * 1e6);
+        vm.stopPrank();
+
+        // Bob's Shares should now be worth ~1100 USDC.
+        uint256 bobShareValue = vault.convertToAssets(vault.balanceOf(bob));
+        assertApproxEqAbs(bobShareValue, 1100 * 1e6, 1e4); // Allow small rounding
+
+        // Alice Cancels
+        vm.startPrank(alice);
+        vault.cancelRedeem(reqId);
+        vm.stopPrank();
+
+        // Alice re-deposited 1000 USDC.
+        // At the NEW price (1.10), 1000 USDC buys fewer shares.
+        uint256 aliceNewShares = vault.balanceOf(alice);
+
+        assertLt(aliceNewShares, aliceShares, "Alice should have fewer shares due to price increase");
+
+        uint256 aliceNewValue = vault.convertToAssets(aliceNewShares);
+        assertApproxEqAbs(aliceNewValue, 1000 * 1e6, 1e4);
     }
 
     /* ================ EDGE CASES & REVERTS ================ */
 
     function test_RevertIf_ZeroShares() public {
         vm.expectRevert("Zero shares");
-        vault.requestRedeem(0, alice, alice);
+        vault.requestRedeem(0, alice, alice,100);
     }
 
     function test_RevertIf_InsufficientAllowance() public {
@@ -168,7 +244,7 @@ contract AsyncVaultTest is Test {
         // Eve tries to redeem Alice's shares without allowance
         vm.expectRevert(); // OZ: "ERC20: insufficient allowance"
         vm.startPrank(eve);
-        vault.requestRedeem(aliceShares, alice, alice);
+        vault.requestRedeem(aliceShares, alice, alice,aliceShares);
         vm.stopPrank();
     }
 
@@ -178,7 +254,8 @@ contract AsyncVaultTest is Test {
         usdc.approve(address(vault), 1000 * 1e6);
         vault.deposit(1000 * 1e6, alice);
         uint256 shares = vault.balanceOf(alice);
-        uint256 requestId = vault.requestRedeem(shares, alice, alice);
+        uint256 expectedAssets = vault.convertToAssets(shares);
+        uint256 requestId = vault.requestRedeem(shares, alice, alice,expectedAssets);
         vm.stopPrank();
 
         vm.warp(block.timestamp + DELAY + 1);
@@ -190,6 +267,71 @@ contract AsyncVaultTest is Test {
         vm.expectRevert("Invalid request");
         vm.prank(alice);
         vault.claimRedeem(requestId);
+    }
+
+    function test_RevertIf_SlippageExceeded() public {
+        // 1. Setup
+        vm.startPrank(alice);
+        usdc.approve(address(vault), 100 * 1e6);
+        vault.deposit(100 * 1e6, alice);
+        
+        // 2. Alice expects 1:1 (100 USDC), but sets minAssets to 101 USDC
+        // This simulates a scenario where she thought price was 1.01
+        uint256 shares = vault.balanceOf(alice);
+        uint256 impossibleMinAssets = 101 * 1e6;
+
+        // 3. Expect Revert
+        vm.expectRevert("Slippage: Return too low");
+        vault.requestRedeem(shares, alice, alice, impossibleMinAssets);
+        vm.stopPrank();
+    }
+
+    function test_DepositYieldDoesNotBenefitPendingRedemptions() public {
+        // Alice deposit 1000 USDC
+        vm.startPrank(alice);
+        usdc.approve(address(vault), 1000 * 1e6);
+        uint256 aliceShares = vault.deposit(1000 * 1e6, alice);
+        vm.stopPrank();
+
+        // Alice requests full redemption → snapshot taken
+        vm.startPrank(alice);
+        uint256 requestId = vault.requestRedeem(aliceShares, alice, alice, 0); // no minAssets
+        vm.stopPrank();
+
+        // Capture her locked amount
+        (uint256 lockedAssets, ) = vault.pendingRedeemRequest(requestId);
+        assertEq(lockedAssets, 1000 * 1e6); // snapshotted at request time
+
+        // During delay, admin deposits 50 USDC yield
+        address admin = vault.owner();
+        deal(address(usdc), admin, 50 * 1e6);
+
+        vm.startPrank(admin);
+        usdc.approve(address(vault), 50 * 1e6);
+        vault.depositYield(50 * 1e6);
+        vm.stopPrank();
+
+        // Vault now has 1050 USDC, but pending = 1000 USDC locked
+        assertEq(vault.totalAssets(), 50 * 1e6); // only remaining investable
+        assertEq(vault.totalPendingAssets(), 1000 * 1e6);
+
+        // Warp past delay → Alice claims
+        vm.warp(block.timestamp + vault.settlementDelay() + 1);
+
+        uint256 aliceBalanceBefore = usdc.balanceOf(alice);
+
+        vm.prank(alice);
+        vault.claimRedeem(requestId);
+
+        uint256 aliceBalanceAfter = usdc.balanceOf(alice);
+
+        // CRITICAL ASSERTION: She gets exactly the snapshot — NO extra yield
+        assertEq(aliceBalanceAfter - aliceBalanceBefore, 1000 * 1e6);
+        assertEq(aliceBalanceAfter - aliceBalanceBefore, lockedAssets);
+
+        // Remaining 50 USDC stays in vault for future/other holders
+        assertEq(vault.totalAssets(), 50 * 1e6);
+        assertEq(vault.totalPendingAssets(), 0);
     }
 
     function test_SyncWithdrawDisabled() public {

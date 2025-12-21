@@ -23,17 +23,11 @@ contract HelperConfig is Script {
     }
 
     function getSepoliaEthConfig() public pure returns (NetworkConfig memory) {
-        return NetworkConfig({
-            usdc: 0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8,
-            decimals: 6
-        });
+        return NetworkConfig({usdc: 0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8, decimals: 6});
     }
 
     function getMainnetEthConfig() public pure returns (NetworkConfig memory) {
-        return NetworkConfig({
-            usdc: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48,
-            decimals: 6
-        });
+        return NetworkConfig({usdc: 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48, decimals: 6});
     }
 
     function getOrCreateAnvilEthConfig() public returns (NetworkConfig memory) {
@@ -47,9 +41,6 @@ contract HelperConfig is Script {
 
         vm.stopBroadcast();
 
-        return NetworkConfig({
-            usdc: address(mockUsdc),
-            decimals: 6
-        });
+        return NetworkConfig({usdc: address(mockUsdc), decimals: 6});
     }
 }

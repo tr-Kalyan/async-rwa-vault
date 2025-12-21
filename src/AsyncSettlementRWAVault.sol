@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-
 import {ERC4626} from "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 //import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
@@ -11,7 +10,6 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
-
     using SafeERC20 for IERC20;
 
     /* ================ CONSTANTS & IMMUTABLES ================ */
@@ -19,7 +17,7 @@ contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
     uint256 public constant MIN_DELAY = 24 hours; //(T+1)
     uint256 public constant MAX_DELAY = 7 days;
 
-    // Track total assets locked in the queue  
+    // Track total assets locked in the queue
     uint256 public totalPendingAssets;
 
     /* ================ CONFIGURABLE STATE ================ */
@@ -52,20 +50,18 @@ contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
         uint256 claimableAt
     );
 
-    event RedemptionClaimed(
-        uint256 indexed requestId, 
-        address indexed receiver, 
-        uint256 assets
-    );
+    event RedemptionClaimed(uint256 indexed requestId, address indexed receiver, uint256 assets);
+
+    event YieldDistributed(uint256 amount, uint256 newSharePrice);
+
+    event RedemptionCancelled(uint256 indexed requestId, address indexed owner, uint256 assetsReturned, uint256 sharesMinted);
 
     /* ================ CONSTRUCTOR ================ */
-    constructor(
-        IERC20 asset_,
-        string memory name_,
-        string memory symbol_
-    ) ERC4626(asset_) ERC20(name_,symbol_) Ownable(msg.sender){}
-
-    
+    constructor(IERC20 asset_, string memory name_, string memory symbol_)
+        ERC4626(asset_)
+        ERC20(name_, symbol_)
+        Ownable(msg.sender)
+    {}
 
     /**
      * @dev Decimals Offset: 18 (Shares) - 6 (USDC) = 12.
@@ -77,7 +73,7 @@ contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
 
     function setSettlementDelay(uint256 newDelay) external onlyOwner {
         require(newDelay >= MIN_DELAY && newDelay <= MAX_DELAY, "Delay out of bounds");
-        
+
         settlementDelay = newDelay;
 
         emit SettlementDelayUpdated(newDelay);
@@ -91,16 +87,25 @@ contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
         return super.totalAssets() - totalPendingAssets;
     }
 
-    function requestRedeem(
-        uint256 shares,
-        address receiver,
-        address owner
-    ) external returns (uint256 requestId){
+    /**
+     * @notice Distributes Net Yield to the vault.
+     * @dev We assume Fees/Expenses were already deducted off-chain.
+     * This function exists primarily to Emit the Event for analytics.
+     */
+    function depositYield(uint256 amount) external onlyOwner {
+        require(amount > 0, "Zero yield");
 
+        // 1. Transfer the NET amount (Efficient)
+        IERC20(asset()).safeTransferFrom(msg.sender, address(this), amount);
+
+        // 2. Emit the Event so the Dashboard knows "This is Profit"
+        emit YieldDistributed(amount, convertToAssets(1e18));
+    }
+
+    function requestRedeem(uint256 shares, address receiver, address owner,uint256 minAssets) external returns (uint256 requestId) {
         require(shares > 0, "Zero shares");
         require(receiver != address(0), "Zero receiver");
         require(owner != address(0), "Zero owner");
-
 
         // If the caller is NOT the owner, check if they have approval (allowance) to spend the owner's shares.
         if (msg.sender != owner) {
@@ -115,11 +120,17 @@ contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
 
         require(expectedAssets > 0, "Zero assets"); // Implicitly checks shares > 0 too
 
+        // 2. AUDITOR CHECK: Slippage Protection
+        // If the calculated assets are less than what the user accepted, STOP.
+        if (expectedAssets < minAssets) {
+            revert("Slippage: Return too low");
+        }
+
+
         // Burn shares immediately
         // This is critical: reduces totalSupply -> new depositors see correct price
         // Also removes owner from the future yield/risk
         _burn(owner, shares);
-
 
         totalPendingAssets += expectedAssets;
 
@@ -129,22 +140,14 @@ contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
         pendingRedemptions[requestId] = RedemptionRequest({
             owner: owner,
             receiver: receiver,
-            shares:shares,
+            shares: shares,
             assetAtRequest: expectedAssets,
-            claimableAt:block.timestamp + settlementDelay
+            claimableAt: block.timestamp + settlementDelay
         });
 
         // === Emit event for indexing ===
-        emit RedemptionRequested(
-            requestId,
-            owner,
-            receiver,
-            shares,
-            expectedAssets,
-            block.timestamp + settlementDelay
-        );
+        emit RedemptionRequested(requestId, owner, receiver, shares, expectedAssets, block.timestamp + settlementDelay);
     }
-
 
     function claimRedeem(uint256 requestId) external nonReentrant {
         RedemptionRequest storage request = pendingRedemptions[requestId];
@@ -157,34 +160,50 @@ contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
         address receiver = request.receiver;
         uint256 assetsToSend = request.assetAtRequest;
 
-
         // Delete request to prevent double-claim + refund gas
         totalPendingAssets -= request.assetAtRequest;
         delete pendingRedemptions[requestId];
-
-        
-
 
         // Transfer underlying assets
         // Use SafeERC20 if underlying is not trusted - but USDC is fine
         IERC20(asset()).safeTransfer(receiver, assetsToSend);
 
         emit RedemptionClaimed(requestId, receiver, assetsToSend);
-
     }
 
 
+    function cancelRedeem(uint256 requestId) external nonReentrant {
+        RedemptionRequest storage request = pendingRedemptions[requestId];
+
+        require(request.owner == msg.sender, "Not Owner");
+        require(request.shares > 0, "Invalid request");
+        require(block.timestamp < request.claimableAt, "Already claimable");
+
+        uint256 assetsToFree = request.assetAtRequest;
+
+        // Calculate Share to mint (Re-Deposit Logic)
+        uint256 sharesToMint = previewDeposit(assetsToFree);
+
+        // Unlock the assets
+        totalPendingAssets -= assetsToFree;
+
+        // Delete the request
+        delete pendingRedemptions[requestId];
+
+        // Mint
+        _mint(msg.sender, sharesToMint);
+
+        emit RedemptionCancelled(requestId, msg.sender, assetsToFree, sharesToMint);
+
+    }
+
     /* ================ View Functions ================ */
-    function pendingRedeemRequest(uint256 requestId)
-        external
-        view
-        returns (uint256 assets, uint256 claimableAt)
-    {
+    function pendingRedeemRequest(uint256 requestId) external view returns (uint256 assets, uint256 claimableAt) {
         RedemptionRequest memory request = pendingRedemptions[requestId];
 
         // Return 0 if request doesn't exist or already claimed
-        if (request.owner == address(0)){
-            return (0,0);
+        if (request.owner == address(0)) {
+            return (0, 0);
         }
 
         return (request.assetAtRequest, request.claimableAt);
@@ -196,11 +215,25 @@ contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
      * @dev Strict Async Enforcer: Return 0 to indicate standard withdrawals are disabled.
      * Users MUST use requestRedeem() instead.
      */
-    function maxWithdraw(address /*owner*/) public pure override returns (uint256) {
-        return 0; 
+    function maxWithdraw(
+        address /*owner*/
+    )
+        public
+        pure
+        override
+        returns (uint256)
+    {
+        return 0;
     }
 
-    function maxRedeem(address /*owner*/) public pure override returns (uint256) {
+    function maxRedeem(
+        address /*owner*/
+    )
+        public
+        pure
+        override
+        returns (uint256)
+    {
         return 0;
     }
 
