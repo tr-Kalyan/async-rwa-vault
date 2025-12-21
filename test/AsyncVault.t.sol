@@ -61,19 +61,16 @@ contract AsyncVaultTest is Test {
         (address usdcAddress,) = helperConfig.activeNetworkConfig();
         usdc = IERC20(usdcAddress);
 
-        // In local: mock was minted in HelperConfig broadcast
-        // In fork: real USDC → need to fund users
-        if (block.chainid != 31337) {
-            // not anvil
-            // Fund via deal on fork
+        if (block.chainid == 31337) { // local anvil
+            // Mock has mint function
+            MockUSDC mock = MockUSDC(usdcAddress);
+            mock.mint(alice, 10000 * 1e6);
+            mock.mint(bob, 10000 * 1e6);
+        } else {
+            // Fork: real token
             deal(address(usdc), alice, 10000 * 1e6);
             deal(address(usdc), bob, 10000 * 1e6);
         }
-        
-
-        // Better: Always fund after deploy
-        // Local: mock has mint()
-        // Fork: use deal
     }
 
     /* ================ HAPPY PATH ================ */

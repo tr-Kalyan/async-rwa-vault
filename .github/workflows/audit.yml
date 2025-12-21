@@ -1,0 +1,63 @@
+name: CI
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  FOUNDRY_PROFILE: ci
+
+jobs:
+  unit:
+    name: Unit Tests & Reports
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          cache: true
+
+      - name: Format Check
+        run: forge fmt --check
+
+      - name: Build with Sizes
+        run: forge build --sizes
+
+      - name: Run Unit Tests
+        run: forge test -vvv
+
+      - name: Gas Snapshot
+        run: forge snapshot --check --tolerance 500
+
+      - name: Coverage Report
+        run: forge coverage --report lcov
+
+  fork:
+    name: Fork Tests (Mainnet + Sepolia)
+    runs-on: ubuntu-latest
+    needs: unit  # Only run if unit passes
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          cache: true
+
+      - name: Run Mainnet Fork Tests
+        run: forge test --fork-url ${{ secrets.ALCHEMY_MAINNET }} -vvv
+
+      - name: Run Sepolia Fork Tests
+        run: forge test --fork-url ${{ secrets.ALCHEMY_SEPOLIA }} -vvv
