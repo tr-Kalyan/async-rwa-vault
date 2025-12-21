@@ -63,7 +63,7 @@ contract AsyncVaultTest is Test {
 
         if (block.chainid == 31337) {
             // local anvil
-        // Mock has mint function
+            // Mock has mint function
             MockUSDC mock = MockUSDC(usdcAddress);
             mock.mint(alice, 10000 * 1e6);
             mock.mint(bob, 10000 * 1e6);
