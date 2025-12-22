@@ -1,3 +1,7 @@
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 name: CI
 
 permissions:
@@ -58,7 +62,10 @@ jobs:
 
       - name: Run Invariant Tests
         env:
-          ETH_RPC_URL: ""
+          ETH_RPC_URL: 
+          RPC_URL: 
+          ALCHEMY_MAINNET: 
+          ALCHEMY_SEPOLIA:
         run: forge test --mt invariant -vvv
 
   fork:
