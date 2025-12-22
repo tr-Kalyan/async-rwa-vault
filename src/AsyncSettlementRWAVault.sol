@@ -12,6 +12,9 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
+    /* ================ ERRORS ================ */
+    error InsufficientLiquidity(); // Vault is dry
+
     /* ================ CONSTANTS & IMMUTABLES ================ */
 
     uint256 public constant MIN_DELAY = 24 hours; //(T+1)
@@ -58,6 +61,8 @@ contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
         uint256 indexed requestId, address indexed owner, uint256 assetsReturned, uint256 sharesMinted
     );
 
+    event RedemptionRescinded(uint256 indexed requestId, string reason);
+
     /* ================ CONSTRUCTOR ================ */
     constructor(IERC20 asset_, string memory name_, string memory symbol_)
         ERC4626(asset_)
@@ -89,6 +94,8 @@ contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
         return super.totalAssets() - totalPendingAssets;
     }
 
+    /* ================ CORE FUNCTIONS ================ */
+    
     /**
      * @notice Distributes Net Yield to the vault.
      * @dev We assume Fees/Expenses were already deducted off-chain.
@@ -153,6 +160,19 @@ contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
         emit RedemptionRequested(requestId, owner, receiver, shares, expectedAssets, block.timestamp + settlementDelay);
     }
 
+    function rescindRedemption(uint256 requestId, string calldata reason) external onlyOwner {
+        RedemptionRequest storage request = pendingRedemptions[requestId];
+
+        require(request.owner != address(0), "Invalid request");
+        uint256 assets = request.assetAtRequest;
+
+        totalPendingAssets -= assets;
+        delete pendingRedemptions[requestId];
+
+        emit RedemptionRescinded(requestId, reason);
+
+    }
+
     function claimRedeem(uint256 requestId) external nonReentrant {
         RedemptionRequest storage request = pendingRedemptions[requestId];
 
@@ -163,6 +183,12 @@ contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
         // Cache in memory BEFORE any delete/subtract
         address receiver = request.receiver;
         uint256 assetsToSend = request.assetAtRequest;
+
+        // Liquidity Check
+        uint256 vaultBalance = IERC20(asset()).balanceOf(address(this));
+        if (vaultBalance < assetsToSend) {
+            revert InsufficientLiquidity();
+        }
 
         // Delete request to prevent double-claim + refund gas
         totalPendingAssets -= request.assetAtRequest;
