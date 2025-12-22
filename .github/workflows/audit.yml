@@ -36,7 +36,7 @@ jobs:
         run: forge test -vvv
 
       - name: Gas Snapshot
-        run: forge snapshot --check --tolerance 5 --skip "invariant_*" # Allow 5% gas increase per function
+        run: forge snapshot --check --tolerance 5 --no-match-contract "VaultInvariants"
 
       - name: Coverage Report
         run: forge coverage --report lcov
