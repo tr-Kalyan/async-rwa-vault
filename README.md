@@ -34,6 +34,10 @@ Async redemption flow with RWA-specific enhancements (stable NAV, slippage, comp
 - **Fork tests** — mainnet + Sepolia with **official Circle USDC** (real proxy, blacklist logic)
 - **CI** — fmt, build, unit, invariants, fork, gas snapshot, coverage
 
+### Live on Sepolia
+
+**Vault**: [0x9dC96F7D1161F2E40b1D855C57c5FD2a46cFf6b5](https://sepolia.etherscan.io/address/0x9dC96F7D1161F2E40b1D855C57c5FD2a46cFf6b5#code) (verified)
+
 ### Assumptions & Known Trade-offs
 
 - Yield is **realized only** — admin deposits net returns (matches batch ops)
