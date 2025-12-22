@@ -35,9 +35,6 @@ jobs:
       - name: Run Unit Tests
         run: forge test -vvv
 
-      - name: Run Invariant Tests
-        run: forge test --mt invariant -vvv
-
       - name: Gas Snapshot
         run: forge snapshot --check --tolerance 5 # Allow 5% gas increase per function
 
