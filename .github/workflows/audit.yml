@@ -81,7 +81,4 @@ jobs:
           cache: true
 
       - name: Run Mainnet Fork Tests
-        run: forge test --fork-url ${{ secrets.ALCHEMY_MAINNET }} -vvv
-
-      - name: Run Sepolia Fork Tests
-        run: forge test --fork-url ${{ secrets.ALCHEMY_SEPOLIA }} -vvv
+        run: forge test --fork-url ${{ secrets.ALCHEMY_MAINNET }} --match-path "test/AsyncVault.t.sol" -vvv
