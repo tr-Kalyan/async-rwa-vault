@@ -57,6 +57,8 @@ jobs:
           cache: true
 
       - name: Run Invariant Tests
+        env:
+          ETH_RPC_URL: ""
         run: forge test --mt invariant -vvv
 
   fork:
