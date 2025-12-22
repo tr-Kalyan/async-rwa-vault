@@ -15,34 +15,30 @@ interface IAsyncSettlementVault is IERC4626 {
      * @param owner Owner of the shares (allows meta-tx)
      * @param minAssets Minimum acceptable assets (slippage protection)
      * @return requestId Unique ID for this pending redemption
-    */
-    function requestRedeem(
-        uint256 shares,
-        address receiver,
-        address owner,
-        uint256 minAssets
-    ) external returns (uint256 requestId);
-    
+     */
+    function requestRedeem(uint256 shares, address receiver, address owner, uint256 minAssets)
+        external
+        returns (uint256 requestId);
+
     /**
      * @notice Cancel a pending redemption request
      * @dev Only callable before claimableAt, re-mints shares at current price
      * @param requestId The pending request to cancel
-    */
+     */
     function cancelRedeem(uint256 requestId) external;
-
 
     /**
      * @notice View pending redemption details
      * @param requestId The request ID
      * @return assets Snapshotted assets owed
      * @return claimableAt Timestamp when claimable
-    */
+     */
     function pendingRedeemRequest(uint256 requestId) external view returns (uint256 assets, uint256 claimableAt);
 
     /**
      * @notice Claim matured redemption
      * @param requestId The request to claim
-    */
+     */
     function claimRedeem(uint256 requestId) external;
 
     /* ================ EVENTS ================ */
@@ -57,17 +53,10 @@ interface IAsyncSettlementVault is IERC4626 {
     );
 
     event RedemptionCancelled(
-        uint256 indexed requestId,
-        address indexed owner,
-        uint256 assetsReturned,
-        uint256 sharesMinted
+        uint256 indexed requestId, address indexed owner, uint256 assetsReturned, uint256 sharesMinted
     );
 
-    event RedemptionClaimed(
-        uint256 indexed requestId,
-        address indexed receiver,
-        uint256 assets
-    );
+    event RedemptionClaimed(uint256 indexed requestId, address indexed receiver, uint256 assets);
 
     event YieldDistributed(uint256 amount, uint256 newSharePrice);
 

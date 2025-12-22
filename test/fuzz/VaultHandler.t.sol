@@ -12,7 +12,7 @@ contract VaultHandler is Test {
     address public admin;
 
     address[] public users;
-    uint256[] public activeRequestIds; 
+    uint256[] public activeRequestIds;
 
     uint256 public constant INITIAL_USER_BALANCE = 10_000 * 1e6;
     uint256 public constant MAX_YIELD = 500 * 1e6;
@@ -52,7 +52,7 @@ contract VaultHandler is Test {
 
     function requestRedeem(uint256 userId, uint256 sharePercent, uint256 minAssetsOffset) public {
         userId = bound(userId, 0, users.length - 1);
-        sharePercent = bound(sharePercent, 1, 100); 
+        sharePercent = bound(sharePercent, 1, 100);
 
         address user = users[userId];
         uint256 shares = vault.balanceOf(user);
@@ -63,7 +63,7 @@ contract VaultHandler is Test {
         if (sharesToRedeem == 0) return;
 
         uint256 expectedAssets = vault.previewRedeem(sharesToRedeem);
-        
+
         // Slippage calc
         uint256 offset = bound(minAssetsOffset, 0, expectedAssets / 10);
         uint256 minAssets = expectedAssets - offset;
@@ -81,7 +81,7 @@ contract VaultHandler is Test {
         uint256 requestId = activeRequestIds[requestIndex];
 
         // FIX: Tuple unpacking (No struct)
-        (address owner, , , , uint256 claimableAt) = vault.pendingRedemptions(requestId);
+        (address owner,,,, uint256 claimableAt) = vault.pendingRedemptions(requestId);
 
         if (owner == address(0)) {
             _removeRequestId(requestIndex);
@@ -92,7 +92,7 @@ contract VaultHandler is Test {
         if (block.timestamp >= claimableAt) {
             // It's too late to cancel, so we skip calling the function
             // (Calling it would revert, wasting a fuzz run)
-            return; 
+            return;
         }
 
         vm.prank(owner);
@@ -107,7 +107,7 @@ contract VaultHandler is Test {
         requestIndex = bound(requestIndex, 0, activeRequestIds.length - 1);
         uint256 requestId = activeRequestIds[requestIndex];
 
-        (address owner, , , , uint256 claimableAt) = vault.pendingRedemptions(requestId);
+        (address owner,,,, uint256 claimableAt) = vault.pendingRedemptions(requestId);
 
         if (owner == address(0)) {
             _removeRequestId(requestIndex);
@@ -145,7 +145,7 @@ contract VaultHandler is Test {
         requestIndex = bound(requestIndex, 0, activeRequestIds.length - 1);
         uint256 requestId = activeRequestIds[requestIndex];
 
-        (address owner, , , ,) = vault.pendingRedemptions(requestId);
+        (address owner,,,,) = vault.pendingRedemptions(requestId);
         if (owner == address(0)) {
             _removeRequestId(requestIndex);
             return;

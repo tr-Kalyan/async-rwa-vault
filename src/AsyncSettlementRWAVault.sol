@@ -95,7 +95,7 @@ contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
     }
 
     /* ================ CORE FUNCTIONS ================ */
-    
+
     /**
      * @notice Distributes Net Yield to the vault.
      * @dev We assume Fees/Expenses were already deducted off-chain.
@@ -170,7 +170,6 @@ contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
         delete pendingRedemptions[requestId];
 
         emit RedemptionRescinded(requestId, reason);
-
     }
 
     function claimRedeem(uint256 requestId) external nonReentrant {

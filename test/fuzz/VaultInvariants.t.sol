@@ -7,7 +7,6 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {VaultHandler} from "./VaultHandler.t.sol";
 import {MockUSDC} from "../mocks/MockUSDC.sol";
 
-
 contract VaultInvariants is Test {
     AsyncSettlementRWAVault vault;
     IERC20 usdc;
@@ -17,7 +16,7 @@ contract VaultInvariants is Test {
         usdc = IERC20(address(new MockUSDC()));
         vault = new AsyncSettlementRWAVault(usdc, "Async RWA Vault", "arUSDC");
         handler = new VaultHandler(vault, usdc);
-        
+
         targetContract(address(handler));
     }
 
@@ -35,12 +34,6 @@ contract VaultInvariants is Test {
     /// @notice We should never promise to pay more than we physically hold
     /// (Note: This assumes funds are not invested off-chain during this test)
     function invariant_solvency_liquidity() public view {
-        assertLe(
-            vault.totalPendingAssets(),
-            usdc.balanceOf(address(vault)),
-            "Insolvent: Liabilities exceed Cash"
-        );
+        assertLe(vault.totalPendingAssets(), usdc.balanceOf(address(vault)), "Insolvent: Liabilities exceed Cash");
     }
-
-
 }
