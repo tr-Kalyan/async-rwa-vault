@@ -208,8 +208,8 @@ contract AsyncSettlementRWAVault is ERC4626, Ownable, ReentrancyGuard {
 
         uint256 assetsToFree = request.assetAtRequest;
 
-        // Calculate Share to mint (Re-Deposit Logic)
-        uint256 sharesToMint = previewDeposit(assetsToFree);
+        // restore exactly what was burned (shares) to the original owner
+        uint256 sharesToMint = request.shares;
 
         // Unlock the assets
         totalPendingAssets -= assetsToFree;
